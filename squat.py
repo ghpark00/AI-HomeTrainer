@@ -1,6 +1,7 @@
 import cv2
 import mediapipe as mp
 import numpy as np
+import time
 from PIL import ImageFont, ImageDraw, Image
 
 # 사용할 폰트 파일 경로
@@ -58,17 +59,11 @@ mp_pose = mp.solutions.pose
 pose = mp_pose.Pose()
 mp_drawing = mp.solutions.drawing_utils
 
-# 스쿼트 카운터를 위한 변수 초기화
-counter = 0 
-stage = 'up' # 'up' 또는 'down' 상태
-
 # 웹캠 열기
 cap = cv2.VideoCapture(0)
 if not cap.isOpened():
     print("카메라를 열 수 없습니다.")
     exit()
-
-import time
 
 # 카운터 및 피드백 변수 초기화
 counter = 0 
@@ -78,6 +73,18 @@ stage = 'up'
 feedback = ""
 feedback_start_time = 0
 mistake_made_this_rep = False
+smoothed_bar = 0.0
+ANGLE_THRESHOLD_UP = 170.0 # UP 상태 기준 (사용자 맞춤)
+ANGLE_THRESHOLD_DOWN = 100.0 # DOWN 상태 기준
+
+# 세트 및 휴식 타이머 설정
+SET_GOAL = 10 # 한 세트당 목표 횟수 (테스트 시 3~5회로 줄여서 하세요)
+REST_DURATION = 30 # 휴식 시간 (초)
+workout_state = 'workout' # 현재 상태: 'workout' 또는 'rest'
+rest_start_time = 0
+set_counter = 1 # 현재 세트 번호
+
+# --- ✅ [while 루프 전체 교체] ---
 
 # 비디오 스트림을 처리하기 위한 메인 루프
 while cap.isOpened():
@@ -85,116 +92,169 @@ while cap.isOpened():
     if not success:
         break
 
-    # 1. 피드백 타이머 로직
-    # 피드백 메시지가 뜬 후 2초가 지났으면 메시지를 지웁니다.
-    if feedback != "" and time.time() - feedback_start_time > 2:
-        feedback = ""
+    # --- 1. 상태에 따른 로직 분기 ---
+    if workout_state == 'rest':
+        # --- 휴식 상태 로직 ---
+        elapsed_rest_time = time.time() - rest_start_time
+        remaining_rest_time = int(REST_DURATION - elapsed_rest_time)
 
-    # BGR 이미지를 RGB로 변환
-    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    
-    # MediaPipe Pose 모델로 이미지 처리
-    results = pose.process(image_rgb)
+        if remaining_rest_time > 0:
+            # 휴식 중 UI 표시 (화면 중앙에 큰 메시지)
+            image_height, image_width, _ = image.shape
+            
+            # 반투명 검은색 배경 추가
+            overlay = image.copy()
+            cv2.rectangle(overlay, (0, 0), (image_width, image_height), (0,0,0), -1)
+            image = cv2.addWeighted(overlay, 0.7, image, 0.3, 0)
+            
+            text1 = "SET COMPLETE!"
+            text2 = f"REST: {remaining_rest_time}s"
+            
+            # Pillow를 사용해 텍스트 크기 계산 (정확한 중앙 정렬을 위해)
+            font_large = ImageFont.truetype(FONT_PATH, 50)
+            font_medium = ImageFont.truetype(FONT_PATH, 30)
+            
+            text1_bbox = font_large.getbbox(text1)
+            text2_bbox = font_medium.getbbox(text2)
+            
+            text1_width = text1_bbox[2] - text1_bbox[0]
+            text1_height = text1_bbox[3] - text1_bbox[1]
+            text2_width = text2_bbox[2] - text2_bbox[0]
 
-    try:
-        landmarks = results.pose_landmarks.landmark
+            x1 = int((image_width - text1_width) / 2)
+            y1 = int((image_height / 2) - text1_height)
+            x2 = int((image_width - text2_width) / 2)
+            y2 = int((image_height / 2) + 20)
+            
+            image = draw_text(image, text1, (x1, y1), FONT_PATH, 50, (0, 255, 0))
+            image = draw_text(image, text2, (x2, y2), FONT_PATH, 30, (255, 255, 255))
+            
+        else:
+            # 휴식 종료 -> 운동 상태로 전환 및 변수 초기화
+            workout_state = 'workout'
+            counter = 0
+            good_counter = 0
+            bad_counter = 0
+            set_counter += 1
+            feedback = ""
+            stage = 'up'
+
+    elif workout_state == 'workout':
+        # --- 운동 상태 로직 ---
+        # 피드백 타이머 로직
+        if feedback != "" and time.time() - feedback_start_time > 2:
+            feedback = ""
+
+        # 포즈 처리 로직 (기존과 동일)
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        results = pose.process(image_rgb)
         
-        hip_visibility = landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].visibility
-        knee_visibility = landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].visibility
-        ankle_visibility = landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].visibility
-        shoulder_visibility = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].visibility
-
-        if hip_visibility > 0.7 and knee_visibility > 0.7 and ankle_visibility > 0.7 and shoulder_visibility > 0.7:
-            
-            hip = [landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].x, landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].y]
-            knee = [landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].x, landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].y]
-            ankle = [landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].x, landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].y]
-            shoulder = [landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x, landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y]
-
-            knee_angle = calculate_angle(hip, knee, ankle)
-            hip_angle = calculate_angle(shoulder, hip, knee)
-            
-            # 2. 실시간 피드백 로직
-            if knee_angle < 60:
-                feedback = "TOO DEEP"
-                mistake_made_this_rep = True
-                feedback_start_time = time.time() # 나쁜 피드백 시간 기록
-            
-            elif stage == 'down' and hip_angle < 100:
-                feedback = "STRAIGHTEN BACK"
-                mistake_made_this_rep = True
-                feedback_start_time = time.time() # 나쁜 피드백 시간 기록
-            
-            # 3. 스쿼트 카운팅 로직
-            if knee_angle < 100 and stage == 'up':
-                stage = 'down'
-                mistake_made_this_rep = False
-
-            if knee_angle > 140 and stage == 'down':
-                stage = 'up'
-                counter += 1 # 총 횟수 증가
+        # --- 👇 [1. 진행률 바 변수 초기화] ---
+        bar_percentage = 0 # 기본값 0으로 설정
+        
+        try:
+            landmarks = results.pose_landmarks.landmark
+            # (랜드마크 신뢰도 체크 및 좌표/각도 계산 로직은 기존과 동일)
+            hip_visibility = landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].visibility
+            knee_visibility = landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].visibility
+            ankle_visibility = landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].visibility
+            shoulder_visibility = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].visibility
+        
+            if hip_visibility > 0.7 and knee_visibility > 0.7 and ankle_visibility > 0.7 and shoulder_visibility > 0.7:
+                hip = [landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].x, landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].y]
+                knee = [landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].x, landmarks[mp_pose.PoseLandmark.LEFT_KNEE.value].y]
+                ankle = [landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].x, landmarks[mp_pose.PoseLandmark.LEFT_ANKLE.value].y]
+                shoulder = [landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x, landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y]
+                knee_angle = calculate_angle(hip, knee, ankle)
+                hip_angle = calculate_angle(shoulder, hip, knee)
                 
-                # 4. GOOD/BAD 카운터 로직
-                if mistake_made_this_rep:
-                    bad_counter += 1
-                    # 나쁜 자세로 REP을 마쳤으므로 별도 피드백 없음
+                # --- 👇 [2. 진행률(%) 계산] ---
+                if knee_angle >= ANGLE_THRESHOLD_UP:
+                    bar_percentage = 0.0
+                elif knee_angle <= ANGLE_THRESHOLD_DOWN:
+                    bar_percentage = 100.0
                 else:
-                    good_counter += 1
-                    feedback = "GOOD"
-                    feedback_start_time = time.time() # 좋은 피드백 시간 기록
+                    # xp는 오름차순이어야 함!
+                    bar_percentage = float(np.interp(
+                        knee_angle,
+                        [ANGLE_THRESHOLD_DOWN, ANGLE_THRESHOLD_UP],  # 100 → 170 (오름차순)
+                        [100.0, 0.0]                                 # 100°일 때 100%, 170°일 때 0%
+                    ))
+                
+                alpha = 0.2
+                smoothed_bar = (1 - alpha) * smoothed_bar + alpha * bar_percentage
+                
+                # 피드백 및 카운팅 로직 (기존과 동일)
+                # ... (생략) ...
+                if knee_angle < 60:
+                    feedback = "TOO DEEP"; mistake_made_this_rep = True; feedback_start_time = time.time()
+                elif stage == 'down' and hip_angle < 100:
+                    feedback = "STRAIGHTEN BACK"; mistake_made_this_rep = True; feedback_start_time = time.time()
+                if knee_angle < 100 and stage == 'up':
+                    stage = 'down'; mistake_made_this_rep = False
+                if knee_angle > 140 and stage == 'down':
+                    stage = 'up'; counter += 1
+                    
+                    if mistake_made_this_rep:
+                        bad_counter += 1
+                    else:
+                        good_counter += 1
+                        feedback = "GOOD"; feedback_start_time = time.time()
+                        
+                        # --- 2. 세트 완료 체크 ---
+                        if good_counter == SET_GOAL:
+                            workout_state = 'rest'
+                            rest_start_time = time.time()
+                            feedback = "" # 세트 완료 시에는 GOOD 피드백 대신 바로 휴식 모드로 전환
 
-            # 각도 시각화
-            cv2.putText(image, str(round(knee_angle, 2)), tuple(np.multiply(knee, [1280, 720]).astype(int)), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
+        except Exception as e:
+            pass
 
-    except Exception as e:
-        pass
+        # 운동 중 UI 그리기 (기존과 동일 + 세트 번호 추가)
+        if results.pose_landmarks:
+            mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+            
+        # 기존 정보창 UI    
+        overlay = image.copy(); alpha = 0.6
+        draw_rounded_rectangle(overlay, (0, 0, 200, 145), 20, (0,0,0), -1)
+        image = cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0)
+        
+        # --- 3. UI에 세트 번호 추가 ---
+        image = draw_text(image, f'SET {set_counter}', (10, 10), FONT_PATH, 18, (255, 255, 255))
+        image = draw_text(image, 'TOTAL REPS', (10, 35), FONT_PATH, 16, (200, 200, 200))
+        image = draw_text(image, str(counter), (130, 35), FONT_PATH, 18, (255, 255, 255))
+        image = draw_text(image, 'GOOD', (10, 65), FONT_PATH, 16, (0, 255, 0))
+        image = draw_text(image, str(good_counter), (70, 65), FONT_PATH, 18, (255, 255, 255))
+        image = draw_text(image, 'BAD', (120, 65), FONT_PATH, 16, (255, 0, 0))
+        image = draw_text(image, str(bad_counter), (170, 65), FONT_PATH, 18, (255, 255, 255))
+        image = draw_text(image, 'STAGE', (10, 95), FONT_PATH, 16, (200, 200, 200))
+        image = draw_text(image, stage.upper(), (90, 95), FONT_PATH, 18, (255, 255, 255))
+        feedback_color = (0, 255, 0) if feedback == "GOOD" else (255, 0, 0)
+        image = draw_text(image, feedback, (10, 120), FONT_PATH, 18, feedback_color)
 
-    # --- ✅ [반투명 UI 수정 코드] ---
+        # --- 👇 [3. 진행률 바 그리기] ---
+        # 바(Bar)의 위치와 크기 설정
+        bar_x, bar_y, bar_w, bar_h = 220, 10, 25, 125
+        
+        # 바의 배경 그리기
+        cv2.rectangle(image, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h), (200, 200, 200), 2)
+        
+        # 바의 내용(fill) 그리기
+        fill_h = int(bar_h * smoothed_bar / 100.0)
+        cv2.rectangle(image, (bar_x, bar_y + bar_h - fill_h), (bar_x + bar_w, bar_y + bar_h), (255, 255, 255), -1)
+        
+        # 디버깅을 위해 현재 각도와 퍼센트 값을 바 옆에 텍스트로 표시
+        try:
+            # knee_angle 변수가 존재할 때만 텍스트를 그립니다.
+            image = draw_text(image, f'ANGLE: {round(knee_angle, 1)}', (bar_x + 30, bar_y + 20), FONT_PATH, 14, (255,255,0))
+            image = draw_text(image, f'PERCENT: {round(bar_percentage, 1)}%', (bar_x + 30, bar_y + 50), FONT_PATH, 14, (255,255,0))
+        except:
+            # knee_angle이 없으면(포즈 미감지) 아무것도 하지 않음
+            pass
 
-    # (이전 랜드마크 그리기 코드)
-    if results.pose_landmarks:
-        mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
-
-    # --- 👇 [UI 표시 부분 전체 교체] ---
-
-    # 1. 반투명 레이어를 위한 복사본 이미지 생성
-    overlay = image.copy()
-    alpha = 0.6  # 투명도 (0.0: 완전 투명, 1.0: 완전 불투명)
-
-    # 2. 반투명 박스 그리기 (overlay 위에)
-    draw_rounded_rectangle(overlay, (0, 0, 200, 120), 20, (0,0,0), -1)
-
-    # 3. 원본 이미지와 반투명 레이어 합성
-    # cv2.addWeighted(src1, alpha, src2, beta, gamma)
-    # 결과 = overlay*alpha + image*(1-alpha) + 0
-    image = cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0)
-
-    # 4. 합성된 이미지 위에 텍스트 그리기 (더 선명하게 보임)
-    # 총 횟수(REPS)
-    image = draw_text(image, 'TOTAL REPS', (10, 10), FONT_PATH, 16, (200, 200, 200)) # (B,G,R) -> (R,G,B)
-    image = draw_text(image, str(counter), (130, 10), FONT_PATH, 18, (255, 255, 255))
-
-    # GOOD 카운트
-    image = draw_text(image, 'GOOD', (10, 40), FONT_PATH, 16, (0, 255, 0))
-    image = draw_text(image, str(good_counter), (70, 40), FONT_PATH, 18, (255, 255, 255))
-
-    # BAD 카운트
-    image = draw_text(image, 'BAD', (120, 40), FONT_PATH, 16, (255, 0, 0)) # 빨간색
-    image = draw_text(image, str(bad_counter), (170, 40), FONT_PATH, 18, (255, 255, 255))
-
-    # 현재 상태 (STAGE)
-    image = draw_text(image, 'STAGE', (10, 70), FONT_PATH, 16, (200, 200, 200))
-    image = draw_text(image, stage.upper(), (90, 70), FONT_PATH, 18, (255, 255, 255))
-
-    # 피드백 메시지
-    feedback_color = (0, 255, 0) if feedback == "GOOD" else (255, 0, 0)
-    image = draw_text(image, feedback, (10, 95), FONT_PATH, 18, feedback_color)
-
-    
-    image = cv2.resize(image, (1920, 1080), interpolation=cv2.INTER_AREA)
-    cv2.imshow('AI Home Trainer - Squat Counter', image)
-
+    # 최종 화면 출력 (기존과 동일)
+    image = cv2.resize(image, (1280, 720), interpolation=cv2.INTER_AREA)
+    cv2.imshow('AI Home Trainer', image)
     if cv2.waitKey(5) & 0xFF == 27:
         break
 
