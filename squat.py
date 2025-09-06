@@ -2,6 +2,9 @@ import cv2
 import mediapipe as mp
 import numpy as np
 import time
+import threading
+import pygame
+from playsound import playsound
 from PIL import ImageFont, ImageDraw, Image
 
 # 사용할 폰트 파일 경로
@@ -22,7 +25,7 @@ def calculate_angle(a, b, c):
     angle = np.abs(radians * 180.0 / np.pi)
 
     if angle > 180.0:
-        angle = 360 - angle
+        angle = 360 - angle 
         
     return angle
 
@@ -54,6 +57,12 @@ def draw_text(img, text, pos, font_path, font_size, color):
     # Pillow 이미지를 다시 OpenCV 이미지로 변환
     return cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
 
+pygame.mixer.init()
+
+def play_sound(sound_file):
+    pygame.mixer.Sound(sound_file).play()
+
+
 # MediaPipe Pose 모델 및 그리기 유틸리티 초기화
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose()
@@ -78,7 +87,7 @@ ANGLE_THRESHOLD_UP = 170.0 # UP 상태 기준 (사용자 맞춤)
 ANGLE_THRESHOLD_DOWN = 100.0 # DOWN 상태 기준
 
 # 세트 및 휴식 타이머 설정
-SET_GOAL = 10 # 한 세트당 목표 횟수 (테스트 시 3~5회로 줄여서 하세요)
+SET_GOAL = 3 # 한 세트당 목표 횟수 (테스트 시 3~5회로 줄여서 하세요)
 REST_DURATION = 30 # 휴식 시간 (초)
 workout_state = 'workout' # 현재 상태: 'workout' 또는 'rest'
 rest_start_time = 0
@@ -184,28 +193,49 @@ while cap.isOpened():
                 alpha = 0.2
                 smoothed_bar = (1 - alpha) * smoothed_bar + alpha * bar_percentage
                 
-                # 피드백 및 카운팅 로직 (기존과 동일)
-                # ... (생략) ...
-                if knee_angle < 60:
-                    feedback = "TOO DEEP"; mistake_made_this_rep = True; feedback_start_time = time.time()
-                elif stage == 'down' and hip_angle < 100:
-                    feedback = "STRAIGHTEN BACK"; mistake_made_this_rep = True; feedback_start_time = time.time()
-                if knee_angle < 100 and stage == 'up':
-                    stage = 'down'; mistake_made_this_rep = False
-                if knee_angle > 140 and stage == 'down':
-                    stage = 'up'; counter += 1
+                # --- 1. 자세 피드백 ---
+                if feedback == "":  # 현재 stage에서 아직 피드백이 안 나갔을 때만
+                    if knee_angle < 60:
+                        feedback = "TOO DEEP"
+                        mistake_made_this_rep = True
+                        feedback_start_time = time.time()
+                        play_sound(r'C:\GITHUB\AI-HomeTrainer\sound\무릎이너무깊어요.wav')
+
+                    elif stage == 'down' and hip_angle < ANGLE_THRESHOLD_DOWN:
+                        feedback = "STRAIGHTEN BACK"
+                        mistake_made_this_rep = True
+                        feedback_start_time = time.time()
+                        play_sound(r'C:\GITHUB\AI-HomeTrainer\sound\등을곧게펴세요.wav')
+                
+                    
+                # --- 2. 카운트 및 세트 로직 ---
+                # 카운트를 위한 단계(stage) 변경 감지
+                if knee_angle < ANGLE_THRESHOLD_DOWN and stage == 'up':
+                    stage = 'down'
+                    mistake_made_this_rep = False
+                    feedback = "" # 새로운 동작 시작 시 피드백 초기화 (중요!)
+
+                if knee_angle > ANGLE_THRESHOLD_UP and stage == 'down':
+                    stage = 'up'
+                    counter += 1
                     
                     if mistake_made_this_rep:
                         bad_counter += 1
+                        play_sound('sound/063_삐삑 (오답 -짧은).mp3') # 👎 나쁜 자세로 카운트 시
                     else:
                         good_counter += 1
-                        feedback = "GOOD"; feedback_start_time = time.time()
                         
-                        # --- 2. 세트 완료 체크 ---
+                        # 🎉 세트 완료 여부를 먼저 체크 (오디오 충돌 방지)
                         if good_counter == SET_GOAL:
                             workout_state = 'rest'
                             rest_start_time = time.time()
-                            feedback = "" # 세트 완료 시에는 GOOD 피드백 대신 바로 휴식 모드로 전환
+                            feedback = "" # 휴식 모드로 전환
+                            play_sound(r'C:\GITHUB\AI-HomeTrainer\sound\0289-예_.wav') # 🎉 세트 완료 효과음만 재생
+                        else:
+                            # 세트가 아직 끝나지 않았을 때만 '좋은 자세' 피드백 재생
+                            feedback = "GOOD"
+                            feedback_start_time = time.time()
+                            play_sound(r'C:\GITHUB\AI-HomeTrainer\sound\correct-choice-43861.mp3') # 👍 좋은 자세로 카운트 시
 
         except Exception as e:
             pass
