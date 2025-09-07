@@ -9,8 +9,11 @@ from PIL import ImageFont, ImageDraw, Image
 FONT_PATH = 'font/NotoSansKR-VariableFont_wght.ttf'
 ANGLE_THRESHOLD_UP = 170.0  # 일어선 자세의 무릎 각도 기준
 ANGLE_THRESHOLD_DOWN = 100.0 # 앉은 자세의 무릎 각도 기준
-SET_GOAL = 3  # 세트당 목표 횟수
+SET_GOAL = 2  # 세트당 목표 횟수
+TOTAL_SETS_GOAL = 2 # 총 목표 세트 수
 REST_DURATION = 30  # 휴식 시간 (초)
+FINISH_DURATION = 60 # 운동 완료 후 종료까지 대기 시간 (초)
+
 
 # MediaPipe Pose 모델 초기화
 mp_pose = mp.solutions.pose
@@ -42,11 +45,16 @@ def play_sound(sound_file):
 
 def draw_text(img, text, pos, font_path, font_size, color):
     """Pillow 라이브러리를 사용해 한글 등 다양한 폰트를 이미지에 그립니다."""
-    img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-    draw = ImageDraw.Draw(img_pil)
-    font = ImageFont.truetype(font_path, font_size)
-    draw.text(pos, text, font=font, fill=color)
-    return cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
+    try:
+        img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+        draw = ImageDraw.Draw(img_pil)
+        font = ImageFont.truetype(font_path, font_size)
+        draw.text(pos, text, font=font, fill=color)
+        return cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
+    except IOError:
+        print(f"폰트 파일({font_path})을 찾을 수 없습니다. 기본 폰트로 대체합니다.")
+        cv2.putText(img, text, (int(pos[0]), int(pos[1] + font_size)), cv2.FONT_HERSHEY_SIMPLEX, font_size / 25, color, 2)
+        return img
 
 # --- 핵심 로직 함수 (리팩토링) ---
 
@@ -125,12 +133,16 @@ def update_state_and_counters(state, landmarks_data):
             play_sound('sound/063_삐삑 (오답 -짧은).mp3')
         else:
             state["good_counter"] += 1
-            # 세트 완료 여부를 먼저 확인
             if state["good_counter"] == SET_GOAL:
-                state["workout_state"] = 'rest'
-                state["rest_start_time"] = time.time()
-                play_sound('sound/0289-예_.wav')
-            else: # 세트가 끝나지 않았으면 긍정 피드백 제공
+                if state["set_counter"] == TOTAL_SETS_GOAL:
+                    state["workout_state"] = 'finished'
+                    state["finish_start_time"] = time.time()
+                    play_sound('sound/0290-와우~~.mp3') # You can change this to a "workout complete" sound
+                else:
+                    state["workout_state"] = 'rest'
+                    state["rest_start_time"] = time.time()
+                    play_sound('sound/0289-예_.wav')
+            else:
                 state["feedback"] = "GOOD"
                 state["feedback_start_time"] = time.time()
                 play_sound('sound/correct-choice-43861.mp3')
@@ -174,33 +186,36 @@ def draw_ui(image, state, landmarks_data):
 
     return image
 
-def draw_rest_screen(image, rest_time_left):
-    """휴식 화면 오버레이를 그립니다."""
+def draw_overlay_screen(image, text1, text2, text1_size, text2_size, text1_color):
+    """휴식 또는 종료 화면 오버레이를 그리는 범용 함수입니다."""
     h, w, _ = image.shape
     overlay = image.copy()
     cv2.rectangle(overlay, (0, 0), (w, h), (0, 0, 0), -1)
     image = cv2.addWeighted(overlay, 0.7, image, 0.3, 0)
-
-    text1 = "SET COMPLETE!"
-    text2 = f"REST: {rest_time_left}s"
     
-    font_large = ImageFont.truetype(FONT_PATH, 50)
-    font_medium = ImageFont.truetype(FONT_PATH, 30)
-    
-    text1_bbox = font_large.getbbox(text1)
-    text2_bbox = font_medium.getbbox(text2)
-    
-    text1_width = text1_bbox[2] - text1_bbox[0]
-    text1_height = text1_bbox[3] - text1_bbox[1]
-    text2_width = text2_bbox[2] - text2_bbox[0]
+    # Pillow를 사용하여 텍스트 크기 계산
+    try:
+        font_large = ImageFont.truetype(FONT_PATH, text1_size)
+        font_medium = ImageFont.truetype(FONT_PATH, text2_size)
+        
+        # getbbox를 사용하여 정확한 텍스트 너비와 높이 계산
+        text1_bbox = font_large.getbbox(text1)
+        text2_bbox = font_medium.getbbox(text2)
+        
+        text1_width = text1_bbox[2] - text1_bbox[0]
+        text1_height = text1_bbox[3] - text1_bbox[1]
+        text2_width = text2_bbox[2] - text2_bbox[0]
+    except IOError: # 폰트 파일을 찾을 수 없을 때 OpenCV로 대체
+        (text1_width, text1_height), _ = cv2.getTextSize(text1, cv2.FONT_HERSHEY_SIMPLEX, text1_size / 25, 2)
+        (text2_width, text2_height), _ = cv2.getTextSize(text2, cv2.FONT_HERSHEY_SIMPLEX, text2_size / 25, 2)
 
     x1 = int((w - text1_width) / 2)
     y1 = int((h / 2) - text1_height)
     x2 = int((w - text2_width) / 2)
-    y2 = int((h / 2) + 20)
+    y2 = int((h / 2) + 40)
     
-    image = draw_text(image, text1, (x1, y1), FONT_PATH, 50, (0, 255, 0))
-    image = draw_text(image, text2, (x2, y2), FONT_PATH, 30, (255, 255, 255))
+    image = draw_text(image, text1, (x1, y1), FONT_PATH, text1_size, text1_color)
+    image = draw_text(image, text2, (x2, y2), FONT_PATH, text2_size, (255, 255, 255))
     return image
 
 
@@ -213,23 +228,19 @@ def main():
 
     # 프로그램의 모든 상태 변수를 담는 딕셔너리
     app_state = {
-        "counter": 0,
-        "good_counter": 0,
-        "bad_counter": 0,
-        "stage": 'up',
-        "feedback": "",
-        "feedback_start_time": 0,
-        "mistake_made_this_rep": False,
-        "smoothed_bar": 0.0,
-        "workout_state": 'workout',
-        "rest_start_time": 0,
-        "set_counter": 1
+        "counter": 0, "good_counter": 0, "bad_counter": 0,
+        "stage": 'up', "feedback": "", "feedback_start_time": 0,
+        "mistake_made_this_rep": False, "smoothed_bar": 0.0,
+        "workout_state": 'workout', "rest_start_time": 0,
+        "set_counter": 1, "finish_start_time": 0
     }
 
     while cap.isOpened():
         success, image = cap.read()
         if not success:
             break
+        
+        
 
         # 현재 상태가 '휴식'일 때의 로직
         if app_state["workout_state"] == 'rest':
@@ -237,15 +248,23 @@ def main():
             remaining_rest = int(REST_DURATION - elapsed_rest)
 
             if remaining_rest > 0:
-                image = draw_rest_screen(image, remaining_rest)
-            else: # 휴식 시간이 끝나면 다음 세트를 위해 상태 초기화
-                app_state["workout_state"] = 'workout'
-                app_state["counter"] = 0
-                app_state["good_counter"] = 0
-                app_state["bad_counter"] = 0
-                app_state["set_counter"] += 1
-                app_state["stage"] = 'up'
-                app_state["feedback"] = ""
+                image = draw_overlay_screen(image, "SET COMPLETE!", f"REST: {remaining_rest}s", 50, 30, (0, 255, 0))
+            else:  # 다음 상태를 위한 초기화
+                app_state.update({
+                    "workout_state": 'workout', "counter": 0, "good_counter": 0,
+                    "bad_counter": 0, "set_counter": app_state["set_counter"] + 1,
+                    "stage": 'up', "feedback": ""
+                })
+        
+        # 현재 상태가 '완료'일 때의 로직
+        elif app_state["workout_state"] == 'finished':
+            elapsed_finish = time.time() - app_state["finish_start_time"]
+            remaining_finish = int(FINISH_DURATION - elapsed_finish)
+
+            if remaining_finish > 0:
+                image = draw_overlay_screen(image, "ALL SETS COMPLETE!!", f"종료까지: {remaining_finish}s", 50, 30, (0, 255, 255))
+            else:
+                break
         
         # 현재 상태가 '운동'일 때의 로직
         elif app_state["workout_state"] == 'workout':

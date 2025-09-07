@@ -5,7 +5,7 @@ import random
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, 
     QPushButton, QLabel, QMessageBox, QFrame, QHBoxLayout, QStackedWidget,
-    QGroupBox, QRadioButton, QCheckBox
+    QGroupBox, QRadioButton, QCheckBox, QSlider
 )
 from PyQt6.QtGui import QFont
 from PyQt6.QtCore import Qt, QUrl
@@ -179,6 +179,21 @@ class SettingsWidget(QWidget):
         self.music_checkbox = QCheckBox("배경음악 켜기 / 끄기")
         self.music_checkbox.setChecked(True)
         music_layout.addWidget(self.music_checkbox)
+        
+        # 볼륨 조절 슬라이더 추가
+        volume_layout = QHBoxLayout()
+        self.volume_slider = QSlider(Qt.Orientation.Horizontal)
+        self.volume_slider.setRange(0, 100)
+        self.volume_slider.setValue(50) # 초기 볼륨 50%
+        
+        self.volume_label = QLabel("50%") # 초기 볼륨 텍스트
+        self.volume_label.setFixedWidth(40)
+
+        volume_layout.addWidget(QLabel("볼륨:"))
+        volume_layout.addWidget(self.volume_slider)
+        volume_layout.addWidget(self.volume_label)
+        
+        music_layout.addLayout(volume_layout)
         music_group.setLayout(music_layout)
         container_layout.addWidget(music_group)
         
@@ -232,7 +247,7 @@ class MainWindow(QMainWindow):
         self.player = QMediaPlayer()
         self.audio_output = QAudioOutput()
         self.player.setAudioOutput(self.audio_output)
-        self.audio_output.setVolume(0.5)
+        self.audio_output.setVolume(0.5) # 초기 볼륨 50%
         
         self.playlist = []
         self.current_track_index = 0
@@ -253,6 +268,7 @@ class MainWindow(QMainWindow):
         # 설정 메뉴 버튼 연결
         self.settings_menu.back_button.clicked.connect(self.show_main_menu_screen)
         self.settings_menu.music_checkbox.stateChanged.connect(self.toggle_music)
+        self.settings_menu.volume_slider.valueChanged.connect(self.set_volume)
         self.settings_menu.dark_mode_radio.toggled.connect(self.set_theme)
         
         # 노래가 끝나면 다음 곡 재생
@@ -280,7 +296,7 @@ class MainWindow(QMainWindow):
             self.player.setSource(self.playlist[self.current_track_index])
             
             if self.settings_menu.music_checkbox.isChecked():
-                 self.player.play()
+                self.player.play()
         except Exception as e:
             print(f"배경음악 재생 목록 설정 실패: {e}")
 
@@ -304,6 +320,12 @@ class MainWindow(QMainWindow):
                 self.player.play()
         else:
             self.player.pause()
+
+    def set_volume(self, value):
+        """슬라이더 값에 따라 배경음악 볼륨을 조절합니다."""
+        float_volume = value / 100.0
+        self.audio_output.setVolume(float_volume)
+        self.settings_menu.volume_label.setText(f"{value}%")
             
     def set_theme(self, checked):
         if checked:
