@@ -8,7 +8,7 @@ from datetime import datetime
 from style_sheet import DARK_STYLESHEET, CARD_STYLESHEET
 from database_manager import init_db, get_records_by_exercise
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, 
+    QApplication, QMainWindow, QWidget, QVBoxLayout,
     QPushButton, QLabel, QMessageBox, QFrame, QHBoxLayout, QStackedWidget,
     QGroupBox, QRadioButton, QCheckBox, QSlider, QLineEdit,
     QScrollArea
@@ -39,7 +39,7 @@ class MainMenuWidget(QWidget):
         main_layout.addWidget(menu_container,alignment=Qt.AlignmentFlag.AlignCenter);main_layout.addStretch(2)
         footer_label=QLabel("제작자: ghpark00  |  이메일: fkzpt345@gmail.com");footer_label.setObjectName("FooterLabel");footer_label.setAlignment(Qt.AlignmentFlag.AlignCenter);main_layout.addWidget(footer_label)
 
-# --- 운동 기록 선택 위젯 (새로운 위젯) ---
+# --- 운동 기록 선택 위젯 (푸쉬업 버튼 활성화) ---
 class ExerciseSelectionWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -60,8 +60,7 @@ class ExerciseSelectionWidget(QWidget):
         self.squat_button = QPushButton("스쿼트")
         container_layout.addWidget(self.squat_button)
 
-        self.pushup_button = QPushButton("푸쉬업 (준비중)")
-        self.pushup_button.setEnabled(False)
+        self.pushup_button = QPushButton("푸쉬업") # << '준비중' 제거 및 활성화
         container_layout.addWidget(self.pushup_button)
 
         self.pullup_button = QPushButton("턱걸이 (준비중)")
@@ -73,7 +72,7 @@ class ExerciseSelectionWidget(QWidget):
         container_layout.addWidget(self.back_button)
         layout.addWidget(container)
 
-# --- 개별 기록 카드 위젯 (새로운 위젯) ---
+# --- 개별 기록 카드 위젯 (변경 없음) ---
 class RecordCardWidget(QWidget):
     def __init__(self, record_data, parent=None):
         super().__init__(parent)
@@ -82,13 +81,11 @@ class RecordCardWidget(QWidget):
         
         layout = QVBoxLayout(self)
         
-        # 날짜
         dt_object = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
         date_label = QLabel(dt_object.strftime("%Y년 %m월 %d일 %H:%M"))
         date_label.setObjectName("RecordDate")
         layout.addWidget(date_label)
 
-        # 상세 정보
         try:
             details_list = json.loads(details_json)
             total_good = sum(item['good'] for item in details_list)
@@ -108,7 +105,7 @@ class RecordCardWidget(QWidget):
         layout.addWidget(stats_label)
 
 
-# --- 내 기록 표시 위젯 (디자인 개선) ---
+# --- 내 기록 표시 위젯 (변경 없음) ---
 class RecordsWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -146,7 +143,6 @@ class RecordsWidget(QWidget):
 
     def load_records(self, exercise_type):
         self.title_label.setText(f"'{exercise_type}' 운동 기록")
-        # 기존 위젯 모두 삭제
         for i in reversed(range(self.record_list_layout.count())): 
             self.record_list_layout.itemAt(i).widget().setParent(None)
 
@@ -161,7 +157,7 @@ class RecordsWidget(QWidget):
             card = RecordCardWidget(record)
             self.record_list_layout.addWidget(card)
 
-# --- 기존 위젯들 (스쿼트 설정, 환경설정, 로딩)은 변경 없음 ---
+# --- 운동 설정 위젯 (스쿼트, 푸쉬업) ---
 class SquatSettingsWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -181,6 +177,54 @@ class SquatSettingsWidget(QWidget):
         button_layout.addWidget(self.back_button);button_layout.addWidget(self.start_button);container_layout.addLayout(button_layout)
         layout.addWidget(container)
 
+# <<< [새로운 위젯] 푸쉬업 설정 위젯 ---
+class PushupSettingsWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("PushupSettingsScreen")
+        layout = QVBoxLayout(self)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        container = QWidget()
+        container.setObjectName("MenuContainer")
+        container.setFixedWidth(450)
+        container_layout = QVBoxLayout(container)
+        settings_group = QGroupBox("푸쉬업 설정")
+        settings_layout = QVBoxLayout()
+        settings_layout.setSpacing(15)
+        validator = QIntValidator(1, 999)
+        reps_layout = QHBoxLayout()
+        reps_label = QLabel("한 세트당 목표 횟수:")
+        self.reps_input = QLineEdit("10")
+        self.reps_input.setValidator(validator)
+        reps_layout.addWidget(reps_label)
+        reps_layout.addWidget(self.reps_input)
+        settings_layout.addLayout(reps_layout)
+        sets_layout = QHBoxLayout()
+        sets_label = QLabel("총 목표 세트 수:")
+        self.sets_input = QLineEdit("3")
+        self.sets_input.setValidator(validator)
+        sets_layout.addWidget(sets_label)
+        sets_layout.addWidget(self.sets_input)
+        settings_layout.addLayout(sets_layout)
+        rest_layout = QHBoxLayout()
+        rest_label = QLabel("휴식 시간 (초):")
+        self.rest_input = QLineEdit("30")
+        self.rest_input.setValidator(validator)
+        rest_layout.addWidget(rest_label)
+        rest_layout.addWidget(self.rest_input)
+        settings_layout.addLayout(rest_layout)
+        settings_group.setLayout(settings_layout)
+        container_layout.addWidget(settings_group)
+        container_layout.addStretch(1)
+        button_layout = QHBoxLayout()
+        self.back_button = QPushButton("뒤로가기")
+        self.start_button = QPushButton("운동 시작")
+        self.start_button.setObjectName("SuccessButton")
+        button_layout.addWidget(self.back_button)
+        button_layout.addWidget(self.start_button)
+        container_layout.addLayout(button_layout)
+        layout.addWidget(container)
+
 class SettingsWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -198,13 +242,14 @@ class LoadingWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent);self.setObjectName("LoadingScreen");layout=QVBoxLayout(self);layout.setAlignment(Qt.AlignmentFlag.AlignCenter);layout.setSpacing(20)
         self.animation_label=QLabel();self.animation_label.setAlignment(Qt.AlignmentFlag.AlignCenter);self.animation_label.setObjectName("TitleLabel");self.animation_label.setStyleSheet("font-size: 40px;");layout.addWidget(self.animation_label)
-        self.loading_text=QLabel("스쿼트 프로그램 실행중...");self.loading_text.setObjectName("SubtitleLabel");self.loading_text.setAlignment(Qt.AlignmentFlag.AlignCenter);layout.addWidget(self.loading_text)
+        self.loading_text=QLabel("프로그램 실행중...");self.loading_text.setObjectName("SubtitleLabel");self.loading_text.setAlignment(Qt.AlignmentFlag.AlignCenter);layout.addWidget(self.loading_text)
         self.timer=QTimer(self);self.timer.timeout.connect(self.update_animation);self.animation_chars=["◐","◓","◑","◒"];self.animation_index=0
+    def set_loading_text(self, text): self.loading_text.setText(text) # 로딩 텍스트 변경을 위한 메서드
     def start_animation(self):self.animation_index=0;self.timer.start(150)
     def stop_animation(self):self.timer.stop()
     def update_animation(self):self.animation_label.setText(self.animation_chars[self.animation_index]);self.animation_index=(self.animation_index + 1) % len(self.animation_chars)
 
-# --- 메인 윈도우 (화면 전환 관리) ---
+# --- 메인 윈도우 (화면 전환 및 시그널 관리) ---
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -217,15 +262,19 @@ class MainWindow(QMainWindow):
         self.stacked_widget = QStackedWidget()
         self.setCentralWidget(self.stacked_widget)
 
+        # 위젯 인스턴스 생성
         self.main_menu = MainMenuWidget()
         self.squat_settings = SquatSettingsWidget()
+        self.pushup_settings = PushupSettingsWidget() # <<< 푸쉬업 설정 위젯 추가
         self.settings_menu = SettingsWidget()
         self.loading_screen = LoadingWidget()
-        self.exercise_selection_menu = ExerciseSelectionWidget() # 운동 선택 화면
-        self.records_menu = RecordsWidget() # 기록 표시 화면
+        self.exercise_selection_menu = ExerciseSelectionWidget()
+        self.records_menu = RecordsWidget()
         
+        # 스택 위젯에 추가
         self.stacked_widget.addWidget(self.main_menu)
         self.stacked_widget.addWidget(self.squat_settings)
+        self.stacked_widget.addWidget(self.pushup_settings) # <<< 푸쉬업 설정 위젯 추가
         self.stacked_widget.addWidget(self.settings_menu)
         self.stacked_widget.addWidget(self.loading_screen)
         self.stacked_widget.addWidget(self.exercise_selection_menu)
@@ -239,12 +288,12 @@ class MainWindow(QMainWindow):
     def connect_signals(self):
         # 메인 메뉴
         self.main_menu.squat_button.clicked.connect(self.show_squat_settings_screen)
-        self.main_menu.records_button.clicked.connect(self.show_exercise_selection_screen) # 운동 선택 화면으로 연결
+        self.main_menu.pushup_button.clicked.connect(self.show_pushup_settings_screen) # <<< 푸쉬업 설정 연결
+        self.main_menu.records_button.clicked.connect(self.show_exercise_selection_screen)
         self.main_menu.settings_button.clicked.connect(self.show_settings_screen)
         self.main_menu.exit_button.clicked.connect(self.close)
         
         # 준비중인 기능
-        self.main_menu.pushup_button.clicked.connect(self.feature_coming_soon)
         self.main_menu.pullup_button.clicked.connect(self.feature_coming_soon)
         self.main_menu.chatbot_button.clicked.connect(self.feature_coming_soon)
 
@@ -252,12 +301,17 @@ class MainWindow(QMainWindow):
         self.squat_settings.back_button.clicked.connect(self.show_main_menu_screen)
         self.squat_settings.start_button.clicked.connect(self.start_squat_program)
 
+        # <<< [새로운 연결] 푸쉬업 설정
+        self.pushup_settings.back_button.clicked.connect(self.show_main_menu_screen)
+        self.pushup_settings.start_button.clicked.connect(self.start_pushup_program)
+
         # 운동 기록 선택
         self.exercise_selection_menu.back_button.clicked.connect(self.show_main_menu_screen)
         self.exercise_selection_menu.squat_button.clicked.connect(lambda: self.show_records_screen('스쿼트'))
+        self.exercise_selection_menu.pushup_button.clicked.connect(lambda: self.show_records_screen('푸쉬업')) # <<< 푸쉬업 기록 연결
 
         # 기록 화면
-        self.records_menu.back_button.clicked.connect(self.show_exercise_selection_screen) # 기록 선택 화면으로 돌아가기
+        self.records_menu.back_button.clicked.connect(self.show_exercise_selection_screen)
 
         # 환경설정 및 음악 플레이어
         self.settings_menu.back_button.clicked.connect(self.show_main_menu_screen)
@@ -268,13 +322,14 @@ class MainWindow(QMainWindow):
     # --- 화면 전환 메소드 ---
     def show_main_menu_screen(self): self.stacked_widget.setCurrentWidget(self.main_menu)
     def show_squat_settings_screen(self): self.stacked_widget.setCurrentWidget(self.squat_settings)
+    def show_pushup_settings_screen(self): self.stacked_widget.setCurrentWidget(self.pushup_settings) # <<< 푸쉬업 설정 화면 전환 추가
     def show_settings_screen(self): self.stacked_widget.setCurrentWidget(self.settings_menu)
     def show_exercise_selection_screen(self): self.stacked_widget.setCurrentWidget(self.exercise_selection_menu)
     def show_records_screen(self, exercise_type):
         self.records_menu.load_records(exercise_type)
         self.stacked_widget.setCurrentWidget(self.records_menu)
 
-    # --- 기능 메소드 (대부분 변경 없음) ---
+    # --- 기능 메소드 ---
     def setup_playlist(self):
         sound_dir = 'background_music'
         if not os.path.isdir(sound_dir): return
@@ -306,15 +361,41 @@ class MainWindow(QMainWindow):
             if not (reps and sets and rest and int(reps) > 0 and int(sets) > 0 and int(rest) > 0):
                 self.show_error_message("모든 값은 0보다 큰 숫자로 입력해주세요.")
                 return
-            self.stacked_widget.setCurrentWidget(self.loading_screen); self.loading_screen.start_animation()
-            self.squat_process = subprocess.Popen(["python", "squat_ai_trainer.py", reps, sets, rest])
-            self.check_timer = QTimer(self); self.check_timer.timeout.connect(self.check_squat_process); self.check_timer.start(500)
+            self.loading_screen.set_loading_text("스쿼트 프로그램 실행중...\n 카메라 각도를 올바른 방향으로 설정해주세요.")
+            self.stacked_widget.setCurrentWidget(self.loading_screen)
+            self.loading_screen.start_animation()
+            self.process = subprocess.Popen(["python", "squat_ai_trainer.py", reps, sets, rest])
+            self.check_timer = QTimer(self)
+            self.check_timer.timeout.connect(self.check_process_finished)
+            self.check_timer.start(500)
         except Exception as e:
-            self.show_error_message(f"프로그램 시작 중 오류 발생: {e}"); self.stacked_widget.setCurrentWidget(self.squat_settings)
+            self.show_error_message(f"프로그램 시작 중 오류 발생: {e}")
+            self.stacked_widget.setCurrentWidget(self.squat_settings)
+    
+    # <<< [새로운 메소드] 푸쉬업 프로그램 실행 ---
+    def start_pushup_program(self):
+        try:
+            reps, sets, rest = self.pushup_settings.reps_input.text(), self.pushup_settings.sets_input.text(), self.pushup_settings.rest_input.text()
+            if not (reps and sets and rest and int(reps) > 0 and int(sets) > 0 and int(rest) > 0):
+                self.show_error_message("모든 값은 0보다 큰 숫자로 입력해주세요.")
+                return
+            self.loading_screen.set_loading_text("푸쉬업 프로그램 실행중...\n 카메라 각도를 올바른 방향으로 설정해주세요.")
+            self.stacked_widget.setCurrentWidget(self.loading_screen)
+            self.loading_screen.start_animation()
+            self.process = subprocess.Popen(["python", "pushup_ai_trainer.py", reps, sets, rest])
+            self.check_timer = QTimer(self)
+            self.check_timer.timeout.connect(self.check_process_finished)
+            self.check_timer.start(500)
+        except Exception as e:
+            self.show_error_message(f"프로그램 시작 중 오류 발생: {e}")
+            self.stacked_widget.setCurrentWidget(self.pushup_settings)
 
-    def check_squat_process(self):
-        if self.squat_process.poll() is not None:
-            self.check_timer.stop(); self.loading_screen.stop_animation(); self.stacked_widget.setCurrentWidget(self.main_menu)
+    # 프로세스 체크 함수 통합 (스쿼트/푸쉬업 공용)
+    def check_process_finished(self):
+        if self.process.poll() is not None:
+            self.check_timer.stop()
+            self.loading_screen.stop_animation()
+            self.stacked_widget.setCurrentWidget(self.main_menu)
 
     def feature_coming_soon(self): QMessageBox.information(self, "알림", "🛠️ 현재 준비 중인 기능입니다. 🛠️")
     def show_error_message(self, message): QMessageBox.critical(self, "오류", message)
