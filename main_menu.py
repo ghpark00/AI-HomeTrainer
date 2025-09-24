@@ -5,6 +5,7 @@ import os
 import random
 import json
 import cv2  # <<< 웹캠 확인을 위해 추가
+
 from datetime import datetime
 from style_sheet import DARK_STYLESHEET, CARD_STYLESHEET
 from database_manager import init_db, get_records_by_exercise
@@ -298,13 +299,13 @@ class MainWindow(QMainWindow):
         # 메인 메뉴
         self.main_menu.squat_button.clicked.connect(self.show_squat_settings_screen)
         self.main_menu.pushup_button.clicked.connect(self.show_pushup_settings_screen)
+        self.main_menu.chatbot_button.clicked.connect(self.start_chatbot_program) # <<< start_chatbot_program 으로 변경
         self.main_menu.records_button.clicked.connect(self.show_exercise_selection_screen)
         self.main_menu.settings_button.clicked.connect(self.show_settings_screen)
         self.main_menu.exit_button.clicked.connect(self.close)
         
         # 준비중인 기능
         self.main_menu.pullup_button.clicked.connect(self.feature_coming_soon)
-        self.main_menu.chatbot_button.clicked.connect(self.feature_coming_soon)
 
         # 스쿼트 설정
         self.squat_settings.back_button.clicked.connect(self.show_main_menu_screen)
@@ -337,6 +338,25 @@ class MainWindow(QMainWindow):
     def show_records_screen(self, exercise_type):
         self.records_menu.load_records(exercise_type)
         self.stacked_widget.setCurrentWidget(self.records_menu)
+
+    # --- [수정] 챗봇 프로그램을 별도 프로세스로 실행하는 함수 ---
+    def start_chatbot_program(self):
+        # 실행 전 API 키 유무를 메인 메뉴에서 먼저 확인
+        API_KEY = os.getenv("OPENAI_API_KEY")
+        if not API_KEY:
+            self.show_error_message(
+                "OpenAI API 키가 설정되지 않았습니다.\n"
+                "환경 변수 'OPENAI_API_KEY'를 설정한 후\n"
+                "프로그램을 다시 시작해주세요."
+            )
+            return
+        
+        try:
+            # 챗봇 스크립트를 독립적인 프로세스로 실행
+            # (self.process 에 할당하거나 타이머로 확인할 필요 없음)
+            subprocess.Popen(["python", "chatbot.py"])
+        except Exception as e:
+            self.show_error_message(f"챗봇을 시작하는 중 오류 발생: {e}")
 
     # --- 기능 메소드 (음악 관련 변경 없음) ---
     def setup_playlist(self):
