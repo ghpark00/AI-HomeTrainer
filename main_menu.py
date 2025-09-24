@@ -4,6 +4,7 @@ import subprocess
 import os
 import random
 import json
+import cv2  # <<< 웹캠 확인을 위해 추가
 from datetime import datetime
 from style_sheet import DARK_STYLESHEET, CARD_STYLESHEET
 from database_manager import init_db, get_records_by_exercise
@@ -39,7 +40,7 @@ class MainMenuWidget(QWidget):
         main_layout.addWidget(menu_container,alignment=Qt.AlignmentFlag.AlignCenter);main_layout.addStretch(2)
         footer_label=QLabel("제작자: ghpark00  |  이메일: fkzpt345@gmail.com");footer_label.setObjectName("FooterLabel");footer_label.setAlignment(Qt.AlignmentFlag.AlignCenter);main_layout.addWidget(footer_label)
 
-# --- 운동 기록 선택 위젯 (푸쉬업 버튼 활성화) ---
+# --- 운동 기록 선택 위젯 (변경 없음) ---
 class ExerciseSelectionWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -60,7 +61,7 @@ class ExerciseSelectionWidget(QWidget):
         self.squat_button = QPushButton("스쿼트")
         container_layout.addWidget(self.squat_button)
 
-        self.pushup_button = QPushButton("푸쉬업") # << '준비중' 제거 및 활성화
+        self.pushup_button = QPushButton("푸쉬업") 
         container_layout.addWidget(self.pushup_button)
 
         self.pullup_button = QPushButton("턱걸이 (준비중)")
@@ -103,7 +104,6 @@ class RecordCardWidget(QWidget):
         stats_label.setObjectName("RecordStats")
         stats_label.setWordWrap(True)
         layout.addWidget(stats_label)
-
 
 # --- 내 기록 표시 위젯 (변경 없음) ---
 class RecordsWidget(QWidget):
@@ -157,7 +157,7 @@ class RecordsWidget(QWidget):
             card = RecordCardWidget(record)
             self.record_list_layout.addWidget(card)
 
-# --- 운동 설정 위젯 (스쿼트, 푸쉬업) ---
+# --- 운동 설정 위젯 (변경 없음) ---
 class SquatSettingsWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -177,7 +177,6 @@ class SquatSettingsWidget(QWidget):
         button_layout.addWidget(self.back_button);button_layout.addWidget(self.start_button);container_layout.addLayout(button_layout)
         layout.addWidget(container)
 
-# <<< [새로운 위젯] 푸쉬업 설정 위젯 ---
 class PushupSettingsWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -244,12 +243,22 @@ class LoadingWidget(QWidget):
         self.animation_label=QLabel();self.animation_label.setAlignment(Qt.AlignmentFlag.AlignCenter);self.animation_label.setObjectName("TitleLabel");self.animation_label.setStyleSheet("font-size: 40px;");layout.addWidget(self.animation_label)
         self.loading_text=QLabel("프로그램 실행중...");self.loading_text.setObjectName("SubtitleLabel");self.loading_text.setAlignment(Qt.AlignmentFlag.AlignCenter);layout.addWidget(self.loading_text)
         self.timer=QTimer(self);self.timer.timeout.connect(self.update_animation);self.animation_chars=["◐","◓","◑","◒"];self.animation_index=0
-    def set_loading_text(self, text): self.loading_text.setText(text) # 로딩 텍스트 변경을 위한 메서드
+    def set_loading_text(self, text): self.loading_text.setText(text)
     def start_animation(self):self.animation_index=0;self.timer.start(150)
     def stop_animation(self):self.timer.stop()
     def update_animation(self):self.animation_label.setText(self.animation_chars[self.animation_index]);self.animation_index=(self.animation_index + 1) % len(self.animation_chars)
 
-# --- 메인 윈도우 (화면 전환 및 시그널 관리) ---
+# --- [새로운 함수] 웹캠 가용성 체크 ---
+def is_camera_available():
+    """시스템의 기본 웹캠이 사용 가능한지 확인합니다."""
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        return False
+    # 사용 가능하면 자원을 즉시 해제하여 다른 프로세스가 사용할 수 있도록 함
+    cap.release()
+    return True
+
+# --- 메인 윈도우 ---
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -265,7 +274,7 @@ class MainWindow(QMainWindow):
         # 위젯 인스턴스 생성
         self.main_menu = MainMenuWidget()
         self.squat_settings = SquatSettingsWidget()
-        self.pushup_settings = PushupSettingsWidget() # <<< 푸쉬업 설정 위젯 추가
+        self.pushup_settings = PushupSettingsWidget()
         self.settings_menu = SettingsWidget()
         self.loading_screen = LoadingWidget()
         self.exercise_selection_menu = ExerciseSelectionWidget()
@@ -274,7 +283,7 @@ class MainWindow(QMainWindow):
         # 스택 위젯에 추가
         self.stacked_widget.addWidget(self.main_menu)
         self.stacked_widget.addWidget(self.squat_settings)
-        self.stacked_widget.addWidget(self.pushup_settings) # <<< 푸쉬업 설정 위젯 추가
+        self.stacked_widget.addWidget(self.pushup_settings)
         self.stacked_widget.addWidget(self.settings_menu)
         self.stacked_widget.addWidget(self.loading_screen)
         self.stacked_widget.addWidget(self.exercise_selection_menu)
@@ -288,7 +297,7 @@ class MainWindow(QMainWindow):
     def connect_signals(self):
         # 메인 메뉴
         self.main_menu.squat_button.clicked.connect(self.show_squat_settings_screen)
-        self.main_menu.pushup_button.clicked.connect(self.show_pushup_settings_screen) # <<< 푸쉬업 설정 연결
+        self.main_menu.pushup_button.clicked.connect(self.show_pushup_settings_screen)
         self.main_menu.records_button.clicked.connect(self.show_exercise_selection_screen)
         self.main_menu.settings_button.clicked.connect(self.show_settings_screen)
         self.main_menu.exit_button.clicked.connect(self.close)
@@ -301,14 +310,14 @@ class MainWindow(QMainWindow):
         self.squat_settings.back_button.clicked.connect(self.show_main_menu_screen)
         self.squat_settings.start_button.clicked.connect(self.start_squat_program)
 
-        # <<< [새로운 연결] 푸쉬업 설정
+        # 푸쉬업 설정
         self.pushup_settings.back_button.clicked.connect(self.show_main_menu_screen)
         self.pushup_settings.start_button.clicked.connect(self.start_pushup_program)
 
         # 운동 기록 선택
         self.exercise_selection_menu.back_button.clicked.connect(self.show_main_menu_screen)
         self.exercise_selection_menu.squat_button.clicked.connect(lambda: self.show_records_screen('스쿼트'))
-        self.exercise_selection_menu.pushup_button.clicked.connect(lambda: self.show_records_screen('푸쉬업')) # <<< 푸쉬업 기록 연결
+        self.exercise_selection_menu.pushup_button.clicked.connect(lambda: self.show_records_screen('푸쉬업'))
 
         # 기록 화면
         self.records_menu.back_button.clicked.connect(self.show_exercise_selection_screen)
@@ -319,17 +328,17 @@ class MainWindow(QMainWindow):
         self.settings_menu.volume_slider.valueChanged.connect(self.set_volume)
         self.player.mediaStatusChanged.connect(self.play_next_song)
     
-    # --- 화면 전환 메소드 ---
+    # --- 화면 전환 메소드 (변경 없음) ---
     def show_main_menu_screen(self): self.stacked_widget.setCurrentWidget(self.main_menu)
     def show_squat_settings_screen(self): self.stacked_widget.setCurrentWidget(self.squat_settings)
-    def show_pushup_settings_screen(self): self.stacked_widget.setCurrentWidget(self.pushup_settings) # <<< 푸쉬업 설정 화면 전환 추가
+    def show_pushup_settings_screen(self): self.stacked_widget.setCurrentWidget(self.pushup_settings)
     def show_settings_screen(self): self.stacked_widget.setCurrentWidget(self.settings_menu)
     def show_exercise_selection_screen(self): self.stacked_widget.setCurrentWidget(self.exercise_selection_menu)
     def show_records_screen(self, exercise_type):
         self.records_menu.load_records(exercise_type)
         self.stacked_widget.setCurrentWidget(self.records_menu)
 
-    # --- 기능 메소드 ---
+    # --- 기능 메소드 (음악 관련 변경 없음) ---
     def setup_playlist(self):
         sound_dir = 'background_music'
         if not os.path.isdir(sound_dir): return
@@ -354,8 +363,14 @@ class MainWindow(QMainWindow):
 
     def set_volume(self, value):
         self.audio_output.setVolume(value / 100.0); self.settings_menu.volume_label.setText(f"{value}%")
-
+    
+    # --- 운동 프로그램 시작 함수 (웹캠 체크 추가) ---
     def start_squat_program(self):
+        # <<< [수정] 웹캠 연결 상태 확인
+        if not is_camera_available():
+            self.show_error_message("웹캠이 연결되어 있지 않습니다!\n웹캠을 연결한 후 다시 시도해주세요.")
+            return
+
         try:
             reps, sets, rest = self.squat_settings.reps_input.text(), self.squat_settings.sets_input.text(), self.squat_settings.rest_input.text()
             if not (reps and sets and rest and int(reps) > 0 and int(sets) > 0 and int(rest) > 0):
@@ -372,8 +387,12 @@ class MainWindow(QMainWindow):
             self.show_error_message(f"프로그램 시작 중 오류 발생: {e}")
             self.stacked_widget.setCurrentWidget(self.squat_settings)
     
-    # <<< [새로운 메소드] 푸쉬업 프로그램 실행 ---
     def start_pushup_program(self):
+        # <<< [수정] 웹캠 연결 상태 확인
+        if not is_camera_available():
+            self.show_error_message("웹캠이 연결되어 있지 않습니다!\n웹캠을 연결한 후 다시 시도해주세요.")
+            return
+            
         try:
             reps, sets, rest = self.pushup_settings.reps_input.text(), self.pushup_settings.sets_input.text(), self.pushup_settings.rest_input.text()
             if not (reps and sets and rest and int(reps) > 0 and int(sets) > 0 and int(rest) > 0):
@@ -390,7 +409,7 @@ class MainWindow(QMainWindow):
             self.show_error_message(f"프로그램 시작 중 오류 발생: {e}")
             self.stacked_widget.setCurrentWidget(self.pushup_settings)
 
-    # 프로세스 체크 함수 통합 (스쿼트/푸쉬업 공용)
+    # --- 유틸리티 메소드 (변경 없음) ---
     def check_process_finished(self):
         if self.process.poll() is not None:
             self.check_timer.stop()
